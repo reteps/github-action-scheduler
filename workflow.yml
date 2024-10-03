@@ -1,0 +1,42 @@
+name: Scheduled Jobs
+'on':
+  schedule:
+    - cron: 0 18 31 12 4
+jobs:
+  Deploy-(fallctf.com):
+    name: Deploy (fallctf.com)
+    if: github.event.schedule == '0 18 31 12 4'
+    permissions:
+      contents: read
+      deployments: write
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository code
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+          submodules: true
+      - name: Build 2023 mdbook
+        uses: ./.github/actions/build-mdbook
+        with:
+          book-directory: fallctf-2023
+      - name: Build 2024 mdbook
+        uses: ./.github/actions/build-mdbook
+        with:
+          book-directory: fallctf-2024
+      - name: Build site
+        uses: ./.github/actions/build-astro
+        with:
+          build-directory: ${{ env.CI_BUILD_DIR }}
+          cache-directory: ${{ env.CI_CACHE_DIR }}
+          working-directory: ${{ env.CI_WORKING_DIR }}
+      - name: Deploy to Cloudflare Pages
+        if: github.actor != 'dependabot[bot]'
+        uses: cloudflare/pages-action@v1
+        with:
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          apiToken: ${{ secrets.CLOUDFLARE_PAGES_API_TOKEN }}
+          directory: ${{ env.CI_BUILD_DIR }}
+          gitHubToken: ${{ secrets.GITHUB_TOKEN }}
+          projectName: ${{ vars.CLOUDFLARE_PROJECT_NAME_FALLCTF }}
+          workingDirectory: ${{ env.CI_WORKING_DIR }}
