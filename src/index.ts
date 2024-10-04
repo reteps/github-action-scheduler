@@ -145,7 +145,7 @@ export const scheduleJobs = async (jobs: [TimedJob, ...TimedJob[]], options: Job
   const namedConditionedJobs = jobs.map((job) => {
     const { time, if: _if, name: _name, ...rest } = job;
     return {
-      name: (job.name || 'Scheduled job') + `at ${job.time.toISOString()}`,
+      name: (job.name || 'Scheduled job') + ` at ${job.time.toISOString()}`,
       if: `github.event.schedule == '${dateToCron(time)}'`,
       ...rest,
     };
