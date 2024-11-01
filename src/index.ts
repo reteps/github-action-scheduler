@@ -83,64 +83,67 @@ const isEventObject = (on: any): on is Exclude<Workflow["on"], GeneratedWorkflow
   return typeof on === "object";
 }
 
-interface JobScheduleOptions {
-  path: string; // Path to the workflow file
-  merge?: boolean; // Should we override the existing workflow, or merge in the new jobs?
-  check?: boolean; // Should we check if the path is a valid path?
-}
+export const generateWorkflow = async (jobs: TimedJob[], merge: boolean, existing_workflow?: Workflow) => {
+  const workflow = existing_workflow ?? {} as Workflow;
 
-export const scheduleJobs = async (jobs: [TimedJob, ...TimedJob[]], options: JobScheduleOptions) => {
-  const { path, check = true, merge = false } = options;
-  const workflow = (await loadYaml(path, check)) || {} as Workflow;
-
-  // Set defaults so that we can assume they exist.
+  // Set defaults so that we can assume they exist
   workflow.name = workflow.name || "Scheduled Jobs";
-  workflow.on = workflow.on || {};
+  workflow.on = workflow.on || { workflow_dispatch: {} };
 
-  // workflow.on is either single event or array of events.
-  // if it's a single event, we need to convert it to an array.
-  // exclude Event or Event[] from the type.
-  const schedules = jobs.map((job) => ({
-      cron: dateToCron(job.time),
+  const new_crons = jobs.map((job) => ({
+    cron: dateToCron(job.time),
   })) as [
     {
-        cron?: string;
+      cron?: string;
     },
     ...{
-        cron?: string;
+      cron?: string;
     }[]
   ];
+  // Only set schedules if there are any
+  const schedule = new_crons.length > 0 ? new_crons : undefined;
 
   if (!merge) {
-    workflow.on = { schedule: schedules };
+    workflow.on = {
+      workflow_dispatch: {},
+      schedule,
+    };
   } else {
+    // workflow.on is either single event or array of events.
+    // if it's a single event, we need to convert it to an array.
+    // exclude Event or Event[] from the type.
     if (isEvent(workflow.on)) {
-      workflow.on = { [workflow.on]: null, schedule: schedules };
+      workflow.on = {
+        workflow_dispatch: {},
+        [workflow.on]: null,
+        schedule,
+      };
     } else if (isEventList(workflow.on)) {
       workflow.on = {
+        workflow_dispatch: {},
         ...workflow.on.reduce((acc, event) => ({ ...acc, [event]: null }), {}),
-        schedule: schedules,
+        schedule,
       };
     } else if (isEventObject(workflow.on)) {
       const uniqueCrons = [
-        ...schedules,
-        ...(workflow.on.schedule || []),
+        ...(schedule ?? []),
+        ...(workflow.on.schedule ?? []),
       ].filter((schedule, index, self) => self.findIndex((s) => s.cron === schedule.cron) === index) as [
         {
-            cron?: string;
+          cron?: string;
         },
         ...{
-            cron?: string;
+          cron?: string;
         }[]
       ];
-  
+
       workflow.on = {
-        ...workflow.on, 
-        schedule: uniqueCrons,
+        workflow_dispatch: {},
+        ...workflow.on,
+        schedule: uniqueCrons.length > 0 ? uniqueCrons : undefined,
       }
     }
   }
-
   // Override if guard
   const namedConditionedJobs = jobs.map((job) => {
     const { time, if: _if, name: _name, ...rest } = job;
@@ -158,5 +161,18 @@ export const scheduleJobs = async (jobs: [TimedJob, ...TimedJob[]], options: Job
     ...namedConditionedJobs,
     ...((merge) ? workflow.jobs : {}),
   };
-  await saveYaml(path, workflow, check);
+  return workflow;
 }
+
+interface JobScheduleOptions {
+  path: string; // Path to the workflow file
+  merge?: boolean; // Should we override the existing workflow, or merge in the new jobs?
+  check?: boolean; // Should we check if the path is a valid path?
+}
+
+export const scheduleJobs = async (jobs: TimedJob[], options: JobScheduleOptions) => {
+  const { path, check = true, merge = false } = options;
+  const existing_workflow = await loadYaml(path, check);
+  const workflow = await generateWorkflow(jobs, merge, existing_workflow);
+  await saveYaml(path, workflow, check);
+};
