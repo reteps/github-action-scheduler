@@ -64,9 +64,8 @@ const dateToCron = (date: Date) => {
   const hours = date.getHours();
   const days = date.getDate();
   const months = date.getMonth() + 1;
-  const dayOfWeek = date.getDay();
 
-  return `${minutes} ${hours} ${days} ${months} ${dayOfWeek}`;
+  return `${minutes} ${hours} ${days} ${months} *`;
 };
 
 type TimedJob = Job & {
